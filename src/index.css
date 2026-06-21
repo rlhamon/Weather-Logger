@@ -1,0 +1,49 @@
+@import "tailwindcss";
+
+@media print {
+  /* Set overall print layouts and margins */
+  @page {
+    margin: 1.5cm;
+    size: portrait;
+  }
+
+  body {
+    background-color: #ffffff !important;
+    color: #0f172a !important;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+
+  /* Force elements to behave well on print layout */
+  .no-print,
+  button,
+  header,
+  aside,
+  footer,
+  #btn-copy-summary,
+  #btn-print-summary,
+  #btn-manual-xlsx-export {
+    display: none !important;
+  }
+
+  /* Avoid splitting critical components like metrics and charts across pages */
+  #noaa-metrics-summary,
+  #noaa-weather-chart-card {
+    page-break-inside: avoid;
+    break-inside: avoid;
+    border: 1px solid #e2e8f0 !important;
+    box-shadow: none !important;
+    background: #ffffff !important;
+    margin-bottom: 2rem !important;
+  }
+
+  /* Clean table borders on print if visible, though we'll focus on chart & summary as requested */
+  table {
+    page-break-inside: auto;
+  }
+  tr {
+    page-break-inside: avoid;
+    page-break-after: auto;
+  }
+}
+

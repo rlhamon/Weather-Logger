@@ -1,0 +1,8 @@
+{
+  "name": "Remix: NOAA Weather Data Exporter",
+  "description": "Fetch hourly temperature forecast and observation data from NOAA by ZIP code and date range, visualize trends, and export to Excel (.xlsx).",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
