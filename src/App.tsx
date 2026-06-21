@@ -62,10 +62,18 @@ import {
 
 export default function App() {
   // Master UI state
-  const [zipcode, setZipcode] = useState<string>('90210');
-  const [unit, setUnit] = useState<WeatherUnit>('F');
-  const [autoExport, setAutoExport] = useState<boolean>(false);
-  const [exportFormat, setExportFormat] = useState<'xlsx' | 'csv'>('xlsx');
+  const [zipcode, setZipcode] = useState<string>(() => {
+    return localStorage.getItem('noaa_zipcode') || '90210';
+  });
+  const [unit, setUnit] = useState<WeatherUnit>(() => {
+    return (localStorage.getItem('noaa_unit') as WeatherUnit) || 'F';
+  });
+  const [autoExport, setAutoExport] = useState<boolean>(() => {
+    return localStorage.getItem('noaa_auto_export') === 'true';
+  });
+  const [exportFormat, setExportFormat] = useState<'xlsx' | 'csv'>(() => {
+    return (localStorage.getItem('noaa_export_format') as 'xlsx' | 'csv') || 'xlsx';
+  });
 
   // File landing and custom folder destination states
   const [customDirectoryPath, setCustomDirectoryPath] = useState<string>(() => {
@@ -76,11 +84,15 @@ export default function App() {
   });
   const [directoryHandle, setDirectoryHandle] = useState<any>(null);
 
-  // Sync customDirectoryPath and directoryName to local storage
+  // Sync custom settings directly to localStorage
   useEffect(() => {
     localStorage.setItem('noaa_custom_directory_path', customDirectoryPath);
     localStorage.setItem('noaa_directory_name', directoryName);
-  }, [customDirectoryPath, directoryName]);
+    localStorage.setItem('noaa_auto_export', String(autoExport));
+    localStorage.setItem('noaa_zipcode', zipcode);
+    localStorage.setItem('noaa_unit', unit);
+    localStorage.setItem('noaa_export_format', exportFormat);
+  }, [customDirectoryPath, directoryName, autoExport, zipcode, unit, exportFormat]);
 
   const selectLocalDirectory = async () => {
     try {
@@ -235,6 +247,101 @@ export default function App() {
     return () => {
       window.removeEventListener('beforeinstallprompt', handleBeforeInstall);
     };
+  }, []);
+
+  // Windows Service Background polling metrics
+  const [pollingIntervalHours, setPollingIntervalHours] = useState<number>(6);
+  const [backgroundServiceLogs, setBackgroundServiceLogs] = useState<Array<{ time: string; text: string; type: 'info' | 'success' | 'err' }>>([]);
+  const [isSyncingWithServer, setIsSyncingWithServer] = useState<boolean>(false);
+
+  // Load config on mount once
+  useEffect(() => {
+    const fetchServerConfig = async () => {
+      try {
+        const res = await fetch('/api/config');
+        if (res.ok) {
+          const cfg = await res.json();
+          if (cfg.zipcode) {
+            setZipcode(cfg.zipcode);
+            addLog(`Merged current ZIP code settings from Windows Service background configuration: "${cfg.zipcode}"`, 'success');
+          }
+          if (cfg.unit) setUnit(cfg.unit);
+          if (cfg.autoExport !== undefined) setAutoExport(cfg.autoExport);
+          if (cfg.exportFormat) setExportFormat(cfg.exportFormat);
+          if (cfg.customDirectoryPath) setCustomDirectoryPath(cfg.customDirectoryPath);
+          if (cfg.pollingIntervalHours) setPollingIntervalHours(cfg.pollingIntervalHours);
+          if (cfg.useTemplate !== undefined) setUseTemplate(cfg.useTemplate);
+          if (cfg.templateFileName) setTemplateFileName(cfg.templateFileName);
+          if (cfg.templateFileBase64) setTemplateFileBase64(cfg.templateFileBase64);
+          if (cfg.templateStartRow) setTemplateStartRow(cfg.templateStartRow);
+          if (cfg.templateSheetName) setTemplateSheetName(cfg.templateSheetName);
+          if (cfg.templateMappings) setTemplateMappings(cfg.templateMappings);
+        }
+      } catch (err) {
+        console.warn('Running in decoupled static web mode:', err);
+      }
+    };
+    fetchServerConfig();
+  }, []);
+
+  // Sync background state to server whenever settings are changed by the user
+  const pushConfigToServer = async (customConfigOverride?: any) => {
+    try {
+      setIsSyncingWithServer(true);
+      const payload = {
+        zipcode,
+        unit,
+        autoExport,
+        exportFormat,
+        customDirectoryPath,
+        pollingIntervalHours,
+        useTemplate,
+        templateFileName,
+        templateFileBase64,
+        templateStartRow,
+        templateSheetName,
+        templateMappings,
+        ...customConfigOverride
+      };
+      
+      await fetch('/api/config', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(payload)
+      });
+    } catch (err) {
+      // Silent error for non-running local server
+    } finally {
+      setIsSyncingWithServer(false);
+    }
+  };
+
+  // Sync back on changes
+  useEffect(() => {
+    if (zipcode.length === 5) {
+      const timer = setTimeout(() => {
+        pushConfigToServer();
+      }, 1000);
+      return () => clearTimeout(timer);
+    }
+  }, [zipcode, unit, autoExport, exportFormat, customDirectoryPath, pollingIntervalHours, useTemplate, templateFileName, templateFileBase64, templateStartRow, templateSheetName, templateMappings]);
+
+  // Read background service activity log trail on interval
+  useEffect(() => {
+    const fetchLogs = async () => {
+      try {
+        const res = await fetch('/api/service-logs');
+        if (res.ok) {
+          const logs = await res.json();
+          setBackgroundServiceLogs(logs);
+        }
+      } catch (_) {}
+    };
+    fetchLogs();
+    const interval = setInterval(fetchLogs, 3000);
+    return () => clearInterval(interval);
   }, []);
 
   const triggerDesktopInstall = async () => {
@@ -1262,99 +1369,175 @@ Generated At   : ${new Date().toLocaleString()} (Local)`;
             <h3 className="text-slate-800 font-bold text-sm tracking-tight mb-3 flex items-center justify-between">
               <span className="flex items-center gap-2">
                 <Laptop className="h-4 w-4 text-sky-600" />
-                Desktop App Center
+                Windows Service & Desktop App Center
               </span>
-              <span className="text-[9px] uppercase font-bold px-2 py-0.5 rounded-full bg-slate-100 text-sky-600 font-mono">
-                Desktop ready
+              <span className="text-[9px] uppercase font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-600 border border-emerald-200 font-mono">
+                Windows Service Enabled
               </span>
             </h3>
 
             <p className="text-[10px] text-slate-500 leading-relaxed mb-4">
-              Access premium desktop integrations, standalone launching, and localized execution scripts to run NOAA weather archival processes directly on any local machine.
+              Configure ofline data ingestion directly on your system. By registering this app as a native Windows Service, it pulls NOAA data in the background silently without any browser tabs being kept open.
             </p>
 
             <div className="space-y-4">
-              {/* Standalone Display Mode / PWA Installer Button */}
-              <div>
-                <span className="text-[9px] uppercase font-bold text-slate-400 block tracking-wider mb-2">Native App Client</span>
-                {isStandalone ? (
-                  <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center gap-2.5">
-                    <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
-                    <div className="text-[10px] text-emerald-800">
-                      <span className="font-bold block">Standalone Client Active</span>
-                      <span>Enjoy physical disk-level storage mapping and local persistence.</span>
+              {/* Standalone PWA Client & Polling Frequency inside Service */}
+              <div className="pt-2 border-t border-slate-100">
+                <span className="text-[9px] uppercase font-bold text-slate-400 block tracking-wider mb-2">Service Polling Configuration</span>
+                
+                <div className="space-y-3">
+                  <div>
+                    <label className="text-[9px] text-slate-500 block mb-1 font-semibold uppercase tracking-wider">Interval between background pulls:</label>
+                    <select
+                      id="polling-interval-select"
+                      value={pollingIntervalHours}
+                      onChange={(e) => {
+                        const val = parseInt(e.target.value, 10);
+                        setPollingIntervalHours(val);
+                        addLog(`Polled background updates config changed to ${val} hour(s). Synchronized with active node-daemon.`, 'info');
+                      }}
+                      className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg text-slate-700 font-semibold focus:outline-hidden focus:ring-1 focus:ring-sky-500"
+                    >
+                      <option value={1}>Every 1 Hour (Critical / Live Logger)</option>
+                      <option value={3}>Every 3 Hours</option>
+                      <option value={6}>Every 6 Hours (Standard)</option>
+                      <option value={12}>Every 12 Hours</option>
+                      <option value={24}>Every 24 Hours (Daily Archive)</option>
+                    </select>
+                  </div>
+
+                  {autoExport ? (
+                    <div className="text-[9px] text-emerald-700 font-medium flex items-center gap-1">
+                      <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping"></span>
+                      <span>Windows background daemon is ARMED & active (auto-pulling scheduled)</span>
                     </div>
-                  </div>
-                ) : (
-                  <div className="space-y-2">
-                    {isInstallable ? (
-                      <button
-                        type="button"
-                        onClick={triggerDesktopInstall}
-                        className="w-full py-2 bg-gradient-to-r from-sky-600 to-sky-700 hover:from-sky-700 hover:to-sky-850 text-white text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-2 shadow-sm cursor-pointer animate-pulse"
-                        title="Install standalone app"
-                      >
-                        <Laptop className="h-3.5 w-3.5" />
-                        <span>Install Standalone Desktop App</span>
-                      </button>
-                    ) : (
-                      <div className="p-3 bg-sky-50/50 border border-sky-100/80 rounded-xl text-[10px] text-slate-600 leading-relaxed">
-                        <span className="font-bold text-slate-800 block mb-1">💡 Installable Standalone App</span>
-                        To install this archive utility with desktop shortcuts, simply select <strong className="text-sky-700">Open in a new tab</strong> by clicking the top right icon, then click the standard <strong className="text-sky-700">Install</strong> button inside your web address bar!
-                      </div>
-                    )}
-                  </div>
-                )}
+                  ) : (
+                    <div className="text-[9px] text-amber-600 font-medium bg-amber-50 p-2 rounded-lg leading-relaxed flex flex-col gap-1">
+                      <span className="font-bold">⚠️ Data Polling is Suspended</span>
+                      <span>To run background pulls, turn on the "Auto-Download Spreadsheet" checkbox in the Export panel above and configure a landing path.</span>
+                    </div>
+                  )}
+                </div>
               </div>
 
-              {/* Offline Runner Scripts */}
-              <div className="pt-3.5 border-t border-slate-100 space-y-2">
-                <span className="text-[9px] uppercase font-bold text-slate-400 block tracking-wider">Local Terminal Bootloaders</span>
-                <p className="text-[9px] text-slate-500 leading-normal">
-                  Want to run this full application locally on your computer? Download a single-click script that installs dependencies and boots the server automatically:
-                </p>
-                <div className="grid grid-cols-2 gap-2">
+              {/* Direct Path Testing */}
+              <div className="pt-3 border-t border-slate-100 space-y-2">
+                <span className="text-[9px] uppercase font-bold text-slate-400 block tracking-wider">Local File System Access</span>
+                
+                <div className="flex gap-2">
                   <button
                     type="button"
-                    onClick={() => downloadLocalRunnerScript('win')}
-                    className="py-1.5 px-2 bg-slate-50 hover:bg-slate-100 text-slate-700 text-[10px] font-semibold border border-slate-200/80 rounded-lg transition-all active:scale-98 flex items-center justify-center gap-1 cursor-pointer truncate"
-                    title="Get bootloader script for Windows (.bat)"
+                    onClick={async () => {
+                      try {
+                        addLog("Verifying backend write authorization...", "info");
+                        const res = await fetch("/api/test-disk-write", { method: "POST" });
+                        const data = await res.json();
+                        if (data.success) {
+                          addLog(`Write authentication successfully verified! Resolved path: "${data.absolutePath}"`, "success");
+                        } else {
+                          addLog(`Write test failed: ${data.error}`, "err");
+                        }
+                      } catch (err: any) {
+                        addLog("Backend offline or inaccessible. Direct-to-disk write requires local execution.", "err");
+                      }
+                    }}
+                    className="flex-1 py-1.5 px-2 bg-slate-50 hover:bg-slate-100 text-slate-700 text-[10px] font-bold border border-slate-200 rounded-lg transition-all active:scale-98 flex items-center justify-center gap-1 cursor-pointer"
+                    title="Probe folder existence & write permission"
                   >
-                    <Download className="h-3 w-3 text-slate-500" />
-                    run-local.bat (Win)
+                    <CheckCircle2 className="h-3.5 w-3.5 text-sky-600" />
+                    Test Write Permission
                   </button>
                   <button
                     type="button"
-                    onClick={() => downloadLocalRunnerScript('unix')}
-                    className="py-1.5 px-2 bg-slate-50 hover:bg-slate-100 text-slate-700 text-[10px] font-semibold border border-slate-200/80 rounded-lg transition-all active:scale-98 flex items-center justify-center gap-1 cursor-pointer truncate"
-                    title="Get bootloader script for macOS / Linux (.sh)"
+                    onClick={async () => {
+                      try {
+                        addLog("Inicitiating instant background NOAA pull of recent hours...", "info");
+                        const res = await fetch("/api/force-pull", { method: "POST" });
+                        const data = await res.json();
+                        if (data.success) {
+                          addLog(`Success! Background poll saved cleanly to Windows disk: ${data.filename}`, "success");
+                        } else {
+                          addLog(`Instant pull failed: ${data.error}`, "err");
+                        }
+                      } catch (err: any) {
+                        addLog("Local Node.js backend is unreachable. Please run the server first.", "err");
+                      }
+                    }}
+                    className="flex-1 py-1.5 px-2 bg-sky-600 hover:bg-sky-700 text-white text-[10px] font-bold rounded-lg transition-all active:scale-98 flex items-center justify-center gap-1 cursor-pointer shadow-sm"
+                    title="Pull immediately and save on background service"
                   >
-                    <Download className="h-3 w-3 text-slate-500" />
-                    run-local.sh (Unix)
+                    <RefreshCw className="h-3.5 w-3.5 animate-spin-slow" />
+                    Run Active Pull Now
                   </button>
                 </div>
               </div>
 
-              {/* Developer Command Line */}
+              {/* Windows Service Bootloaders & Scripts */}
+              <div className="pt-3 border-t border-slate-100 space-y-2">
+                <span className="text-[9px] uppercase font-bold text-slate-400 block tracking-wider">Windows Background Service Installer</span>
+                <p className="text-[9.5px] text-slate-500 leading-normal">
+                  Download single-click Scripts to register this weather collector directly inside Windows Local Service Manager:
+                </p>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => window.open("/api/install-service-script")}
+                    className="py-1.5 px-2 bg-sky-50 hover:bg-sky-100 text-sky-800 text-[10px] font-bold border border-sky-100 rounded-lg transition-all active:scale-98 flex items-center justify-center gap-1 cursor-pointer truncate"
+                    title="Download active Windows service installer"
+                  >
+                    <Download className="h-3 w-3 text-sky-600" />
+                    install-service.js
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => window.open("/api/uninstall-service-script")}
+                    className="py-1.5 px-2 bg-slate-50 hover:bg-slate-100 text-slate-700 text-[10px] font-bold border border-slate-200 rounded-lg transition-all active:scale-98 flex items-center justify-center gap-1 cursor-pointer truncate"
+                    title="Download service uninstaller"
+                  >
+                    <Terminal className="h-3 w-3 text-slate-500" />
+                    uninstall-service.js
+                  </button>
+                </div>
+
+                <div className="p-3 bg-slate-50/50 border border-slate-200/60 rounded-xl rounded-t-sm text-[9.5px] text-slate-600 space-y-1.5">
+                  <span className="font-bold text-slate-800 block">⚡ How to register as native Windows Service:</span>
+                  <ol className="list-decimal list-inside space-y-1 text-[9px] pl-1 select-text">
+                    <li>Download runner script <strong className="text-sky-700">install-service.js</strong> above.</li>
+                    <li>Drop the file into your local cloned NOAA folder root.</li>
+                    <li>Open PowerShell as Admin, then type: <code className="bg-slate-250 p-0.5 rounded font-mono text-[8px] text-slate-800">node install-windows-service.js</code></li>
+                    <li>Close terminal! The service now starts headlessly with Windows on boot!</li>
+                  </ol>
+                </div>
+              </div>
+
+              {/* Windows Background Weather Service Console Terminal */}
               <div className="pt-3 border-t border-slate-100">
-                <span className="text-[9px] uppercase font-bold text-slate-400 block tracking-wider mb-2">Manual Shell Commands</span>
-                <div className="relative bg-slate-900 rounded-xl p-3 border border-slate-800 font-mono text-[9px] text-sky-400 flex flex-col gap-1 select-all">
+                <span className="text-[9px] uppercase font-bold text-slate-400 block tracking-wider mb-2">Windows Service background logs</span>
+                <div className="bg-slate-900 border border-slate-800 rounded-xl p-3 font-mono text-[9px] text-sky-400 flex flex-col gap-1 select-text">
                   <div className="flex items-center justify-between text-slate-500 mb-1 border-b border-slate-800 pb-1 font-sans text-[8px]">
-                    <span>TERMINAL DEV SERVER</span>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        navigator.clipboard.writeText("npm install\nnpm run dev");
-                        addLog("Terminal commands copied to clipboard", "success");
-                      }}
-                      className="text-sky-400 hover:text-white underline cursor-pointer"
-                    >
-                      Copy
-                    </button>
+                    <span>STATUS RECORDINGS</span>
+                    <span className="flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-sky-400 animate-pulse"></span>
+                      Direct Live Connection
+                    </span>
                   </div>
-                  <div>$ npm install</div>
-                  <div>$ npm run dev</div>
-                  <div className="text-slate-500 mt-1 font-sans text-[8px]">Enables hosting server locally at http://localhost:3000</div>
+                  <div className="h-28 overflow-y-auto space-y-1 pr-1 custom-scrollbar">
+                    {backgroundServiceLogs.length === 0 ? (
+                      <div className="text-slate-500 italic">No background log statements received yet. Running local Server pulls them here automatically.</div>
+                    ) : (
+                      backgroundServiceLogs.map((log, i) => (
+                        <div key={i} className="leading-relaxed border-b border-slate-800/40 pb-1 last:border-0 last:pb-0">
+                          <span className="text-slate-500">[{log.time}]</span>{" "}
+                          <span className={
+                            log.type === "success" ? "text-emerald-400" :
+                            log.type === "err" ? "text-rose-400 font-semibold" : "text-sky-200"
+                          }>
+                            {log.text}
+                          </span>
+                        </div>
+                      ))
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
