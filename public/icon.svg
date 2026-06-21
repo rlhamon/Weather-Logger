@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+  <defs>
+    <linearGradient id="skyGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0ea5e9" />
+      <stop offset="100%" stop-color="#0284c7" />
+    </linearGradient>
+    <linearGradient id="cloudGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#ffffff" />
+      <stop offset="100%" stop-color="#cbd5e1" />
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="128" fill="#0f172a" />
+  <g transform="translate(116, 116)">
+    <!-- Cloud Background glow -->
+    <path d="M70,120 A45,45 0 0,1 150,110 A60,60 0 0,1 255,145 A45,45 0 0,1 240,210 L80,210 A50,50 0 0,1 70,120 Z" fill="#0284c7" opacity="0.15" transform="scale(1.1) translate(-15, -15)" />
+    <!-- Main Cloud -->
+    <path d="M70,120 Q70,90 100,90 Q110,90 120,95 Q135,65 170,65 Q205,65 220,95 Q230,90 240,90 Q270,90 270,120 Q290,125 290,150 Q290,180 260,180 L80,180 Q50,180 50,150 Q50,125 70,120 Z" fill="url(#cloudGrad)" />
+    <!-- Down Arrow for Export/Logger -->
+    <path d="M170,170 L170,250 M140,220 L170,250 L200,220" stroke="url(#skyGrad)" stroke-width="18" stroke-linecap="round" stroke-linejoin="round" />
+    <!-- Laptop outline style background -->
+    <rect x="40" y="240" width="260" height="20" rx="6" fill="#64748b" />
+    <rect x="150" y="235" width="40" height="15" fill="#475569" />
+  </g>
+</svg>

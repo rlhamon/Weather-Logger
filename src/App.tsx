@@ -54,7 +54,10 @@ import {
   Check,
   Printer,
   ChevronDown,
-  Upload
+  Upload,
+  Laptop,
+  Terminal,
+  ArrowRight
 } from 'lucide-react';
 
 export default function App() {
@@ -196,6 +199,117 @@ export default function App() {
   const addLog = (text: string, type: 'info' | 'success' | 'err' = 'info') => {
     const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
     setStatusLog(prev => [{ time: timeStr, text, type }, ...prev].slice(0, 15));
+  };
+
+  // PWA & Desktop Integration Engine
+  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+  const [isInstallable, setIsInstallable] = useState<boolean>(false);
+  const [isStandalone, setIsStandalone] = useState<boolean>(false);
+
+  useEffect(() => {
+    // Detect if running as standalone desktop app
+    const checkStandalone = () => {
+      const isStandaloneMode = window.matchMedia('(display-mode: standalone)').matches || 
+                               (window.navigator as any).standalone === true;
+      setIsStandalone(isStandaloneMode);
+    };
+    checkStandalone();
+
+    const handleBeforeInstall = (e: any) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+      setIsInstallable(true);
+      addLog('Desktop installation capability detected & armed!', 'success');
+    };
+
+    window.addEventListener('beforeinstallprompt', handleBeforeInstall);
+    
+    // Listen for successful installation event
+    window.addEventListener('appinstalled', () => {
+      setIsStandalone(true);
+      setIsInstallable(false);
+      setDeferredPrompt(null);
+      addLog('Successfully installed NOAA Exporter as a standalone Desktop App!', 'success');
+    });
+
+    return () => {
+      window.removeEventListener('beforeinstallprompt', handleBeforeInstall);
+    };
+  }, []);
+
+  const triggerDesktopInstall = async () => {
+    if (!deferredPrompt) {
+      addLog('Desktop app is already installed or installation prompt is currently unavailable.', 'info');
+      return;
+    }
+    deferredPrompt.prompt();
+    const { outcome } = await deferredPrompt.userChoice;
+    if (outcome === 'accepted') {
+      setIsStandalone(true);
+      setIsInstallable(false);
+      setDeferredPrompt(null);
+      addLog('Desktop App installation accepted!', 'success');
+    } else {
+      addLog('Desktop App installation was cancelled.', 'info');
+    }
+  };
+
+  const downloadLocalRunnerScript = (osType: 'win' | 'unix') => {
+    let scriptContent = '';
+    let filename = '';
+    if (osType === 'win') {
+      scriptContent = `@echo off\r\n` +
+        `TITLE NOAA Data Archiver - Local Desktop Service\r\n` +
+        `echo ==================================================\r\n` +
+        `echo   NOAA Weather Data Exporter - Local Bootloader  \r\n` +
+        `echo ==================================================\r\n` +
+        `echo.\r\n` +
+        `echo Checking for Node.js engine installation...\r\n` +
+        `node -v >nul 2>&1\r\n` +
+        `if %errorlevel% neq 0 (\r\n` +
+        `  echo ERROR: Node.js was not detected on this system!\r\n` +
+        `  echo Please download and install Node.js from https://nodejs.org/\r\n` +
+        `  pause\r\n` +
+        `  exit /b\r\n` +
+        `)\r\n` +
+        `echo OK: Node.js found!\r\n` +
+        `echo Installing local node modules dependencies...\r\n` +
+        `call npm install\r\n` +
+        `echo Starting local development server at http://localhost:3000...\r\n` +
+        `start http://localhost:3000\r\n` +
+        `call npm run dev\r\n` +
+        `pause\r\n`;
+      filename = 'run-local.bat';
+    } else {
+      scriptContent = `#!/bin/bash\n` +
+        `clear\n` +
+        `echo "=================================================="\n` +
+        `echo "  NOAA Weather Data Exporter - Local Bootloader  "\n` +
+        `echo "=================================================="\n` +
+        `echo ""\n` +
+        `echo "Checking for Node.js engine installation..."\n` +
+        `if ! command -v node &> /dev/null\n` +
+        `then\n` +
+        `    echo "ERROR: Node.js was not detected on this system!"\n` +
+        `    echo "Please download and install Node.js from https://nodejs.org/"\n` +
+        `    exit 1\n` +
+        `fi\n` +
+        `echo "OK: Node.js found!"\n` +
+        `echo "Installing local node modules dependencies..."\n` +
+        `npm install\n` +
+        `echo "Starting local development server at http://localhost:3000..."\n` +
+        `open "http://localhost:3000" || xdg-open "http://localhost:3000" || echo "Please go to http://localhost:3000 in your browser"\n` +
+        `npm run dev\n`;
+      filename = 'run-local.sh';
+    }
+
+    const blob = new Blob([scriptContent], { type: 'text/plain;charset=utf-8' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = filename;
+    link.click();
+    URL.revokeObjectURL(link.href);
+    addLog(`Local desktop runner utility compiled & downloaded: ${filename}`, 'success');
   };
 
   // Initialize dates
@@ -1140,6 +1254,109 @@ Generated At   : ${new Date().toLocaleString()} (Local)`;
                   </div>
                 </div>
               )}
+            </div>
+          </div>
+
+          {/* Desktop App Center Panel */}
+          <div className="bg-white border border-slate-200 p-5 rounded-2xl shadow-xs print:hidden">
+            <h3 className="text-slate-800 font-bold text-sm tracking-tight mb-3 flex items-center justify-between">
+              <span className="flex items-center gap-2">
+                <Laptop className="h-4 w-4 text-sky-600" />
+                Desktop App Center
+              </span>
+              <span className="text-[9px] uppercase font-bold px-2 py-0.5 rounded-full bg-slate-100 text-sky-600 font-mono">
+                Desktop ready
+              </span>
+            </h3>
+
+            <p className="text-[10px] text-slate-500 leading-relaxed mb-4">
+              Access premium desktop integrations, standalone launching, and localized execution scripts to run NOAA weather archival processes directly on any local machine.
+            </p>
+
+            <div className="space-y-4">
+              {/* Standalone Display Mode / PWA Installer Button */}
+              <div>
+                <span className="text-[9px] uppercase font-bold text-slate-400 block tracking-wider mb-2">Native App Client</span>
+                {isStandalone ? (
+                  <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center gap-2.5">
+                    <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
+                    <div className="text-[10px] text-emerald-800">
+                      <span className="font-bold block">Standalone Client Active</span>
+                      <span>Enjoy physical disk-level storage mapping and local persistence.</span>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {isInstallable ? (
+                      <button
+                        type="button"
+                        onClick={triggerDesktopInstall}
+                        className="w-full py-2 bg-gradient-to-r from-sky-600 to-sky-700 hover:from-sky-700 hover:to-sky-850 text-white text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-2 shadow-sm cursor-pointer animate-pulse"
+                        title="Install standalone app"
+                      >
+                        <Laptop className="h-3.5 w-3.5" />
+                        <span>Install Standalone Desktop App</span>
+                      </button>
+                    ) : (
+                      <div className="p-3 bg-sky-50/50 border border-sky-100/80 rounded-xl text-[10px] text-slate-600 leading-relaxed">
+                        <span className="font-bold text-slate-800 block mb-1">💡 Installable Standalone App</span>
+                        To install this archive utility with desktop shortcuts, simply select <strong className="text-sky-700">Open in a new tab</strong> by clicking the top right icon, then click the standard <strong className="text-sky-700">Install</strong> button inside your web address bar!
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Offline Runner Scripts */}
+              <div className="pt-3.5 border-t border-slate-100 space-y-2">
+                <span className="text-[9px] uppercase font-bold text-slate-400 block tracking-wider">Local Terminal Bootloaders</span>
+                <p className="text-[9px] text-slate-500 leading-normal">
+                  Want to run this full application locally on your computer? Download a single-click script that installs dependencies and boots the server automatically:
+                </p>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => downloadLocalRunnerScript('win')}
+                    className="py-1.5 px-2 bg-slate-50 hover:bg-slate-100 text-slate-700 text-[10px] font-semibold border border-slate-200/80 rounded-lg transition-all active:scale-98 flex items-center justify-center gap-1 cursor-pointer truncate"
+                    title="Get bootloader script for Windows (.bat)"
+                  >
+                    <Download className="h-3 w-3 text-slate-500" />
+                    run-local.bat (Win)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => downloadLocalRunnerScript('unix')}
+                    className="py-1.5 px-2 bg-slate-50 hover:bg-slate-100 text-slate-700 text-[10px] font-semibold border border-slate-200/80 rounded-lg transition-all active:scale-98 flex items-center justify-center gap-1 cursor-pointer truncate"
+                    title="Get bootloader script for macOS / Linux (.sh)"
+                  >
+                    <Download className="h-3 w-3 text-slate-500" />
+                    run-local.sh (Unix)
+                  </button>
+                </div>
+              </div>
+
+              {/* Developer Command Line */}
+              <div className="pt-3 border-t border-slate-100">
+                <span className="text-[9px] uppercase font-bold text-slate-400 block tracking-wider mb-2">Manual Shell Commands</span>
+                <div className="relative bg-slate-900 rounded-xl p-3 border border-slate-800 font-mono text-[9px] text-sky-400 flex flex-col gap-1 select-all">
+                  <div className="flex items-center justify-between text-slate-500 mb-1 border-b border-slate-800 pb-1 font-sans text-[8px]">
+                    <span>TERMINAL DEV SERVER</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        navigator.clipboard.writeText("npm install\nnpm run dev");
+                        addLog("Terminal commands copied to clipboard", "success");
+                      }}
+                      className="text-sky-400 hover:text-white underline cursor-pointer"
+                    >
+                      Copy
+                    </button>
+                  </div>
+                  <div>$ npm install</div>
+                  <div>$ npm run dev</div>
+                  <div className="text-slate-500 mt-1 font-sans text-[8px]">Enables hosting server locally at http://localhost:3000</div>
+                </div>
+              </div>
             </div>
           </div>
 

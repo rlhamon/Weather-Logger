@@ -1,0 +1,27 @@
+{
+  "short_name": "NOAA Exporter",
+  "name": "NOAA Weather Data Exporter",
+  "description": "Fetch hourly temperature forecasts and observation records from NOAA, visualize, and map export directly to local data loggers.",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "type": "image/svg+xml",
+      "sizes": "any"
+    },
+    {
+      "src": "/icon-192.png",
+      "type": "image/png",
+      "sizes": "192x192"
+    },
+    {
+      "src": "/icon-512.png",
+      "type": "image/png",
+      "sizes": "512x512"
+    }
+  ],
+  "start_url": "/",
+  "background_color": "#020617",
+  "theme_color": "#0284c7",
+  "display": "standalone",
+  "orientation": "any"
+}
