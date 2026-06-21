@@ -16,12 +16,59 @@ interface ExportOptions {
 }
 
 /**
+ * Clean path separators and invalid filename characters.
+ */
+function getFormattedFilename(filename: string, customPath?: string): string {
+  if (!customPath) return filename;
+  const cleanPath = customPath
+    .replace(/[\\/:]+/g, '_')
+    .replace(/[^a-zA-Z0-9_.-]/g, '');
+  return `${cleanPath}_${filename}`;
+}
+
+/**
+ * Handles saving files. If a DirectoryHandle is provided, it attempts to write directly.
+ * Otherwise, falls back to standard browser anchor downloads.
+ */
+async function saveFile(
+  blob: Blob,
+  fileName: string,
+  options?: { directoryHandle?: any; customDirectoryPath?: string }
+) {
+  if (options?.directoryHandle) {
+    try {
+      // Query permission or prompt if needed
+      const handle = options.directoryHandle;
+      const fileHandle = await handle.getFileHandle(fileName, { create: true });
+      const writable = await fileHandle.createWritable();
+      await writable.write(blob);
+      await writable.close();
+      console.log(`Directly saved "${fileName}" to the specified folder.`);
+      return { success: true, viaHandle: true };
+    } catch (err: any) {
+      console.warn('Failed writing directly to directory handle, falling back to standard browser download:', err);
+    }
+  }
+
+  const finalFilename = getFormattedFilename(fileName, options?.customDirectoryPath);
+  const downloadLink = document.createElement('a');
+  const url = URL.createObjectURL(blob);
+  downloadLink.href = url;
+  downloadLink.download = finalFilename;
+  document.body.appendChild(downloadLink);
+  downloadLink.click();
+  document.body.removeChild(downloadLink);
+  URL.revokeObjectURL(url);
+  return { success: true, viaHandle: false };
+}
+
+/**
  * Encodes and downloads the hourly records as a Standard CSV file.
  * Includes UTF-8 BOM for modern Excel and external tool interoperability.
  */
 export function exportToCsv(
   hourlyRecords: WeatherRecord[],
-  options: ExportOptions
+  options: ExportOptions & { directoryHandle?: any; customDirectoryPath?: string }
 ) {
   const { zipcode, cityName, stateCode, startDateStr, endDateStr, unit } = options;
   const tempLabel = `Temp (°${unit})`;
@@ -69,15 +116,10 @@ export function exportToCsv(
   const bom = new Uint8Array([0xEF, 0xBB, 0xBF]);
   const dataBlob = new Blob([bom, csvContent], { type: 'text/csv;charset=utf-8;' });
   
-  const downloadLink = document.createElement('a');
-  const url = URL.createObjectURL(dataBlob);
-  downloadLink.href = url;
-  downloadLink.download = finalFilename;
-  
-  document.body.appendChild(downloadLink);
-  downloadLink.click();
-  document.body.removeChild(downloadLink);
-  URL.revokeObjectURL(url);
+  saveFile(dataBlob, finalFilename, {
+    directoryHandle: options.directoryHandle,
+    customDirectoryPath: options.customDirectoryPath
+  });
 }
 
 /**
@@ -87,7 +129,7 @@ export function exportToCsv(
 export function exportToExcel(
   hourlyRecords: WeatherRecord[],
   dailySummaries: DailySummary[],
-  options: ExportOptions
+  options: ExportOptions & { directoryHandle?: any; customDirectoryPath?: string }
 ) {
   const { zipcode, cityName, stateCode, startDateStr, endDateStr, unit } = options;
   const tempLabel = `Temp (°${unit})`;
@@ -157,16 +199,10 @@ export function exportToExcel(
   const excelBuffer = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' });
   const dataBlob = new Blob([excelBuffer], { type: 'application/octet-stream' });
   
-  const downloadLink = document.createElement('a');
-  const url = URL.createObjectURL(dataBlob);
-  downloadLink.href = url;
-  downloadLink.download = finalFilename;
-  
-  // Append, click, and teardown
-  document.body.appendChild(downloadLink);
-  downloadLink.click();
-  document.body.removeChild(downloadLink);
-  URL.revokeObjectURL(url);
+  saveFile(dataBlob, finalFilename, {
+    directoryHandle: options.directoryHandle,
+    customDirectoryPath: options.customDirectoryPath
+  });
 }
 
 /**
@@ -197,7 +233,7 @@ export interface TemplateConfig {
  */
 export function exportWithTemplate(
   records: WeatherRecord[],
-  template: TemplateConfig
+  template: TemplateConfig & { directoryHandle?: any; customDirectoryPath?: string }
 ) {
   const { fileBuffer, startRow, sheetName, mappings, isExcel } = template;
 
@@ -319,14 +355,9 @@ export function exportWithTemplate(
 
   const finalFilename = `NOAA_CustomMapped_${template.fileName}`;
 
-  const downloadLink = document.createElement('a');
-  const url = URL.createObjectURL(dataBlob);
-  downloadLink.href = url;
-  downloadLink.download = finalFilename;
-
-  document.body.appendChild(downloadLink);
-  downloadLink.click();
-  document.body.removeChild(downloadLink);
-  URL.revokeObjectURL(url);
+  saveFile(dataBlob, finalFilename, {
+    directoryHandle: template.directoryHandle,
+    customDirectoryPath: template.customDirectoryPath
+  });
 }
 
